@@ -371,23 +371,22 @@ class Guard:
         return ids
 
     def _emit_audit_event(self, result: Dict[str, Any]):
-        """Emit a structured audit event for the evaluation."""
+        """Emit a structured audit event for the evaluation.
+
+        Raises on emission failure; the adapter must catch and block the action.
+        """
         from mandate.audit.emitter import emit_audit_event
 
-        try:
-            event = emit_audit_event(
-                decision=result["decision"],
-                tool_name=result["tool_name"],
-                parameters=result["parameters"],
-                reason=result["reason"],
-                approval_id=result.get("approval_id"),
-                policy_ids=result.get("policy_ids", []),
-                evaluation_time_ms=result.get("evaluation_time_ms", 0),
-            )
-            self.last_audit_event = event
-        except Exception:
-            # If audit emission fails, fail-closed: the adapter must block the action
-            pass
+        event = emit_audit_event(
+            decision=result["decision"],
+            tool_name=result["tool_name"],
+            parameters=result["parameters"],
+            reason=result["reason"],
+            approval_id=result.get("approval_id"),
+            policy_ids=result.get("policy_ids", []),
+            evaluation_time_ms=result.get("evaluation_time_ms", 0),
+        )
+        self.last_audit_event = event
 
     def _get_all_approvals(self) -> List[Dict[str, Any]]:
         """Get all approval requests tracked by this guard."""
