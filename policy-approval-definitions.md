@@ -65,9 +65,11 @@ The precedence algorithm is as follows, consistent with the full algorithm docum
 - **Within each policy file, first-match wins**: Rules are evaluated top-to-bottom within a single file. The first rule whose condition matches (tool_name + all parameters) determines that file's contribution.
 
 - **Policy file precedence**: Files are loaded in definition order. Earlier files have lower precedence (their rules are checked first), and later files can override. When no matching explicit DENY exists:
-  1. Check for matching REQUIRE_APPROVAL rules, starting from the lowest-precedence (earliest-loaded) file and moving to higher-precedence files. The first matching REQUIRE_APPROVAL rule's file determines the result.
-  2. If no REQUIRE_APPROVAL matches, check for matching ALLOW rules, starting from the lowest-precedence file. The first matching ALLOW rule's file determines the result.
-  3. If no rule matches in any file, the decision is default-deny.
+  1. The winning decision type is determined by severity order: DENY > REQUIRE_APPROVAL > ALLOW. 
+  2. Among all files, if any file produces a matching DENY decision, the final decision is DENY, and the winning metadata (policy identity, reason code) is supplied by the **latest-loaded, highest-precedence file** producing DENY.
+  3. If no file produces DENY, and if any file produces REQUIRE_APPROVAL, the final decision is REQUIRE_APPROVAL, and the winning metadata is supplied by the **latest-loaded, highest-precedence file** producing REQUIRE_APPROVAL.
+  4. If no file produces DENY or REQUIRE_APPROVAL, and if any file produces ALLOW, the final decision is ALLOW, and the winning metadata is supplied by the **latest-loaded, highest-precedence file** producing ALLOW.
+  5. If no policy file produces a matching decision of any type, the decision is default-deny.
 
 - **Cross-file ALLOW/REQUIRE_APPROVAL order**: DENY > REQUIRE_APPROVAL > ALLOW. That is:
   - If any file has a matching DENY (per the absolute DENY precedence), the decision is DENY.

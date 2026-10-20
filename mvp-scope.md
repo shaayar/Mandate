@@ -12,7 +12,7 @@ The MVP focuses on demonstrating the core security value of Mandate as a reusabl
 | **Policy loading from YAML** | Policies defined in YAML format with rules, conditions, and actions |
 | **Three decision types** | ALLOW (proceed), DENY (block), REQUIRE_APPROVAL (pending human approval) |
 | **Parameter conditions** | Conditions on tool parameters using comparison operators (eq, neq, gt, lt, gte, lte, contains, regex) |
-| **Wildcard tool_name matching** | `*` matches any tool; prefix patterns supported |
+| **Wildcard tool_name matching** | `*` matches any tool; exact string matching only. No prefix or glob patterns supported in MVP. |
 | **Default-deny** | Actions not covered by any ALLOW rule are denied |
 | **Approval request/response** | `guard.request_approval()`, `guard.approve()`, `guard.deny()` |
 | **Approval invalidation** | Approval invalidated when tool name or parameters change |

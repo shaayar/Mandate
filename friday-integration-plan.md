@@ -157,7 +157,14 @@ def evaluate_tool_call(tool_name, parameters, context):
     )
     
     # 2. Emit audit event for FRIDAY JSONL
-    _emit_audit_event(result, tool_name, parameters, context)
+    # Fail-closed audit emission: if the audit write fails, block the action
+    try:
+        _emit_audit_event(result, tool_name, parameters, context)
+    except Exception:
+        # Audit emission failed; block the protected action
+        raise PermissionError(
+            f"Authorization decision could not be recorded; action blocked: {result.reason}"
+        )
     
     # 3. Handle decision
     if result.decision == ALLOW:

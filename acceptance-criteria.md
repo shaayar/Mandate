@@ -87,7 +87,7 @@ These acceptance criteria define the measurable thresholds that must be met for 
 ### Criteria 4.2: Policy Precedence
 | ID | Test | Pass Condition |
 |---|---|---|
-| `AC-034` | Earlier files lower precedence | When two policies have conflicting rules for same tool, the rule from the later-loaded file takes precedence |
+| `AC-034` | Earlier files lower precedence | When two policies have conflicting rules for same tool and same decision type, the rule from the later-loaded file takes precedence; if conflict involves different decision types, severity order (DENY > REQUIRE_APPROVAL > ALLOW) determines the winner. |
 | `AC-035` | Hot reload works | `guard.reload_policies()` re-reads files; new valid policies replace old ones; invalid ones are retained |
 
 ### Criteria 4.3: Evaluation Failure
@@ -123,7 +123,7 @@ These acceptance criteria define the measurable thresholds that must be met for 
 
 The MVP is considered complete when **all** of the following are true:
 
-- [ ] 42/42 acceptance criteria pass (AC-001 through AC-042)
+- [ ] 50/50 acceptance criteria pass (AC-001 through AC-050)
 
 ## 7. Single-Use Consumption Criteria
 
@@ -143,23 +143,6 @@ The MVP is considered complete when **all** of the following are true:
 | `AC-049` | Already-consumed rejection | Attempting `guard.consume_approval(approval.id)` on an already-consumed approval returns `False` and does not raise an exception (the approval was already consumed). |
 | `AC-050` | State transitions | The approval lifecycle states are: `pending` → `approved` → `consumed`. States `denied`, `expired`, and `invalidated` are terminal and cannot transition to `consumed`.
 
-## 7. Single-Use Consumption Criteria
-
-### Criteria 7.1: Single-Use Consumption
-| ID | Test | Pass Condition |
-|---|---|---|
-| `AC-043` | Single-use consumption | After `guard.consume_approval(approval.id)` returns `True`, the approval is marked as consumed and cannot authorize another execution with the identical tool_name, parameters, and context. |
-| `AC-044` | Repeated consumption rejected | After an approval is consumed, `guard.consume_approval(approval.id)` returns `False` and raises `ApprovalAlreadyConsumedError` when attempted again. |
-| `AC-045` | Concurrent double consumption prevented | Mandate enforces that concurrent attempts to consume the same approval cannot both succeed. Only one consumer may consume the approval. |
-| `AC-046` | Expired/invalidated/rejected approvals blocked | Expired, denied, invalidated, or already-consumed approvals must never authorize execution. Any attempt results in a DENY decision and an `approval_consumed` or `approval_invalidated` reason code. |
-| `AC-047` | Fresh authorization after execution failure | A retry after execution failure requires fresh authorization. Where applicable (REQUIRE_APPROVAL), a new approval must be requested; the previously consumed approval cannot be reused. |
-
-### Criteria 7.2: Approval State Distinctions
-| ID | Test | Pass Condition |
-|---|---|---|
-| `AC-048` | Consumed state | After `guard.consume_approval(approval.id)` returns `True`, the approval's state is marked as `consumed` and `guard.is_approval_valid(approval.id, ...)` returns `False`. |
-| `AC-049` | Already-consumed rejection | Attempting `guard.consume_approval(approval.id)` on an already-consumed approval returns `False` and raises `ApprovalAlreadyConsumedError`. |
-| `AC-050` | State transitions | The approval lifecycle states are: `pending` → `approved` → `consumed`. States `denied`, `expired`, and `invalidated` are terminal and cannot transition to `consumed`. |
 
 
 - [ ] All security test matrix tests from threat-model.md pass

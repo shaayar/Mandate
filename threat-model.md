@@ -106,6 +106,7 @@
 | `ALL-002` | Audit event for `http_post` with JSON body containing `api_key` | `api_key` value redacted in event |
 | `ALL-003` | Audit event for `data_export` with large parameters | Parameters truncated; `"truncated": true` flag set |
 | `ALL-004` | No secrets (passwords, tokens, API keys) in any audit event | Verified by inspection |
+| `ALL-005` | Audit emission failure | If audit event emission fails, the protected action must not execute; the adapter blocks the action and the execution counter remains zero. |
 
 ### 2.6 Bypass Through Unwrapped Tools
 

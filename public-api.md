@@ -314,17 +314,36 @@ If the tool name or parameters change, the existing approval is automatically in
 ### 5.5 Consume Approval
 
 ```python
-# Atomically consume an approval. Returns True if the approval was consumed successfully,
-# False if the approval was already consumed, expired, denied, or invalidated.
+# Atomically consume an approval. Has three mutually exclusive outcomes:
+
+# Returns True: A valid approval is successfully consumed for the first time.
+# The approval is now marked as consumed and cannot authorize another execution.
+
+# Returns False: The approval is in an unusable state, including when it has already been consumed.
+# Re-consumption does not raise an exception; it simply returns False.
+
+# Raises ApprovalAlreadyConsumedError: The supplied approval ID is unknown.
 result = guard.consume_approval(approval.id)
-if result:
+if result is True:
     # Approval was consumed successfully
     pass
+elif result is False:
+    # Approval is in an unusable state (already-consumed, expired, denied, invalidated,
+    # or pending). Consumption was not performed; no exception is raised.
+    pass
 else:
-    # Approval was already consumed or in an invalid state
+    # Approval ID is unknown
     raise ApprovalAlreadyConsumedError(
-        f"Approval {approval.id} was already consumed or is in an invalid state"
+        f"Approval {approval.id} was not found"
     )
+```
+```
+**Consume Approval**
+- **Returns `True`**: A valid approval is successfully consumed for the first time. The approval is now marked as consumed and cannot authorize another execution.
+- **Returns `False`**: The approval is in an unusable state, including when it has already been consumed. Re-consumption does not raise an exception.
+- **Raises `ApprovalAlreadyConsumedError`**: The supplied approval ID is unknown.
+
+**Atomic single-use consumption**: Concurrent attempts to consume the same approval must not allow more than one successful consumption. The method enforces this guarantee atomically.
 ```
 
 **Consume Approval**
@@ -405,6 +424,10 @@ event = emit_audit_event(
 )
 ```
 
+**Fail-closed audit emission**: If a required audit event cannot be emitted successfully, the protected action must not execute. The adapter must establish successful required audit emission before allowing the protected action to execute. If required audit emission fails, the adapter blocks the action. A failed audit write must not be represented as a successful audit record. Fallback logging, if available, must not be treated as proof that the required audit event was successfully emitted.
+
+### 6.2 Event Structure (JSON)
+
 ### 6.2 Event Structure (JSON)
 
 ```json
@@ -450,8 +473,16 @@ def on_guard_evaluation(guard, tool_name, parameters, context):
         "policy_ids": result.policy_ids,
     }
     
+    # Fail-closed audit emission: if the audit write fails, block the action
+    try:
+        friday_jsonl_logger.write(json.dumps(event) + "\n")
+    except Exception:
+        # Audit emission failed; block the protected action
+        raise PermissionError(
+            f"Authorization decision could not be recorded; action blocked: {result.reason}"
+        )
+    
     # Write to FRIDAY's existing JSONL log
-    friday_jsonl_logger.write(json.dumps(event) + "\n")
 ```
 
 ---
