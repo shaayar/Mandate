@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Union
+import time
 
 from mandate.core.evaluator import _condition_matches
 from mandate.core.policy import Policy
@@ -8,6 +9,7 @@ from mandate.exceptions import (
     PolicyValidationError,
     PolicyEvaluationError,
     ApprovalUnavailableError,
+    ApprovalAlreadyConsumedError,
 )
 
 
@@ -98,6 +100,7 @@ class Guard:
         self.evaluation_timeout_ms = evaluation_timeout_ms
         self.approval_timeout_ms = approval_timeout_ms
         self.last_audit_event: Any = None
+        self._approvals: Dict[str, Dict[str, Any]] = {}
 
         # Load policies if provided
         if policies:
@@ -219,17 +222,32 @@ class Guard:
         except Exception:
             raise ApprovalUnavailableError("Approval mechanism failed")
 
+        # Store the approval in guard's in-memory state
+        self._approvals[approval_id] = {
+            "state": approval_request.get("state", "pending"),
+            "tool_name": tool_name,
+            "parameters": parameters,
+            "context": context,
+            "created_at": context.get("timestamp"),
+            "approved": approval_request.get("approved", False),
+        }
+
         return approval_request
 
     def approve(self, approval_id: str):
         """Approve a pending approval request."""
-        if self.logger:
-            self.logger.info(f"Approval {approval_id} approved")
+        if approval_id in self._approvals:
+            self._approvals[approval_id]["state"] = "approved"
+            self._approvals[approval_id]["approved"] = True
+            if self.logger:
+                self.logger.info(f"Approval {approval_id} approved")
 
     def deny(self, approval_id: str):
         """Deny a pending approval request."""
-        if self.logger:
-            self.logger.info(f"Approval {approval_id} denied")
+        if approval_id in self._approvals:
+            self._approvals[approval_id]["state"] = "denied"
+            if self.logger:
+                self.logger.info(f"Approval {approval_id} denied")
 
     def is_approval_valid(
         self,
@@ -238,6 +256,27 @@ class Guard:
         parameters: Dict[str, Any],
     ) -> bool:
         """Check if an approval is still valid for the given action."""
+        if approval_id not in self._approvals:
+            return False
+        approval = self._approvals[approval_id]
+        # Check tool_name matches
+        if approval["tool_name"] != tool_name:
+            return False
+        # Check parameters match exactly
+        if approval["parameters"] != parameters:
+            return False
+        # Check state is approved (not denied, consumed, expired)
+        if approval["state"] != "approved":
+            return False
+        # Check expiry
+        timeout_ms = self.approval_timeout_ms
+        if timeout_ms is not None and timeout_ms > 0:
+            created = approval.get("created_at", 0)
+            if isinstance(created, (int, float)):
+                # created_at is expected as seconds since epoch; convert to ms
+                elapsed_ms = (time.time() - created) * 1000
+                if elapsed_ms > timeout_ms:
+                    return False
         return True
 
     def consume_approval(self, approval_id: str) -> bool:
@@ -245,19 +284,29 @@ class Guard:
 
         Returns True if the approval was consumed successfully.
         Returns False if the approval is in an unusable state.
-        Raises PolicyValidationError if the approval ID is unknown.
+        Raises ApprovalAlreadyConsumedError if the approval ID has already been consumed.
         """
-        # In MVP, we track consumed approvals in a simple set
-        if not hasattr(self, "_consumed_approvals"):
-            self._consumed_approvals = set()
+        # Check if approval ID is known
+        if approval_id not in self._approvals:
+            raise ApprovalAlreadyConsumedError(
+                f"Approval ID '{approval_id}' is unknown"
+            )
 
-        if approval_id in self._consumed_approvals:
-            # Already consumed - return False, no exception
+        # Check if already consumed
+        if hasattr(self, "_consumed_approvals") and approval_id in self._consumed_approvals:
+            # Already consumed - return False, no exception for already-consumed
+            # But per AC-049, unknown IDs raise ApprovalAlreadyConsumedError
+            # and re-consuming returns False
             return False
 
-        # Check if approval exists (placeholder - in real impl, check store)
-        # For MVP, we accept any non-consumed approval ID
+        # Mark as consumed
+        if not hasattr(self, "_consumed_approvals"):
+            self._consumed_approvals = set()
         self._consumed_approvals.add(approval_id)
+
+        # Mark the approval state as consumed
+        self._approvals[approval_id]["state"] = "consumed"
+
         return True
 
     def reload_policies(self, policy_paths: Optional[List[Union[str, Path]]] = None):

@@ -20,3 +20,9 @@ class ApprovalUnavailableError(MandateError):
     """Raised when the approval mechanism is unavailable."""
 
     pass
+
+
+class ApprovalAlreadyConsumedError(MandateError):
+    """Raised when attempting to consume an already-consumed approval ID."""
+
+    pass

@@ -17,6 +17,7 @@ from mandate.exceptions import (
     PolicyValidationError,
     PolicyEvaluationError,
     ApprovalUnavailableError,
+    ApprovalAlreadyConsumedError,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "PolicyValidationError",
     "PolicyEvaluationError",
     "ApprovalUnavailableError",
+    "ApprovalAlreadyConsumedError",
 ]

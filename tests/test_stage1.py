@@ -4,7 +4,7 @@ import json
 import tempfile
 import os
 
-from mandate import Guard, ALLOW, DENY, REQUIRE_APPROVAL, Decision, Policy, PolicyValidationError, PolicyEvaluationError, ApprovalUnavailableError
+from mandate import Guard, ALLOW, DENY, REQUIRE_APPROVAL, Decision, Policy, PolicyValidationError, PolicyEvaluationError, ApprovalUnavailableError, ApprovalAlreadyConsumedError
 from mandate.core.types import ComparisonOperator, PolicyRule, EvaluationContext, Pattern
 
 
@@ -890,3 +890,97 @@ rules:
             assert False, 'PolicyEvaluationError should not be raised for valid policies'
         
         os.unlink(f1)
+
+class TestStage3ApprovalLifecycle:
+    """Stage 3: Approval lifecycle tests."""
+    
+    def dummy_approval_mechanism(self, approval_request):
+        return {"state": "approved", "is_approved": True}
+    
+    def test_approval_creation_with_correct_binding(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_delete", {"path": "/etc/passwd"})
+        assert approval["tool_name"] == "file_delete"
+        assert approval["parameters"] == {"path": "/etc/passwd"}
+        assert approval["state"] == "approved"
+        assert g.is_approval_valid(approval["id"], "file_delete", {"path": "/etc/passwd"})
+    
+    def test_approval_rejects_different_tool(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_delete", {"path": "/etc/passwd"})
+        assert not g.is_approval_valid(approval["id"], "file_read", {"path": "/etc/passwd"})
+        assert not g.is_approval_valid(approval["id"], "file_delete", {"path": "/other.txt"})
+    
+    def test_approval_rejects_modified_parameters(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_read", {"path": "/data/report.txt"})
+        assert not g.is_approval_valid(approval["id"], "file_read", {"path": "/other.txt"})
+    
+    def test_successful_single_consumption(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_read", {"path": "/data/report.txt"})
+        assert g.consume_approval(approval["id"]) is True
+    
+    def test_re_consumption_returns_false(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_read", {"path": "/data/report.txt"})
+        g.consume_approval(approval["id"])
+        assert g.consume_approval(approval["id"]) is False
+    
+    def test_unknown_id_raises_approval_already_consumed_error(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        try:
+            g.consume_approval("nonexistent_id")
+            assert False, "Should have raised ApprovalAlreadyConsumedError"
+        except ApprovalAlreadyConsumedError:
+            pass
+    
+    def test_concurrent_consume_atomicity(self):
+        import threading
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_read", {"path": "/data/report.txt"})
+        results = []
+        def consume():
+            results.append(g.consume_approval(approval["id"]))
+        threads = [threading.Thread(target=consume) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        true_count = sum(1 for r in results if r is True)
+        false_count = sum(1 for r in results if r is False)
+        assert true_count == 1, f"Expected 1 True, got {true_count}"
+        assert false_count == 4, f"Expected 4 False, got {false_count}"
+    
+    def test_consumed_approval_remains_consumed_after_execution_failure(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        approval = g.request_approval("file_read", {"path": "/data/report.txt"})
+        g.consume_approval(approval["id"])
+        assert not g.is_approval_valid(approval["id"], "file_read", {"path": "/data/report.txt"})
+    
+    def test_missing_invalid_approval_fails_closed(self):
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism)
+        assert not g.is_approval_valid("unknown", "file_read", {})
+        approval = g.request_approval("file_read", {"path": "/data.txt"})
+        g.consume_approval(approval["id"])
+        assert not g.is_approval_valid(approval["id"], "file_read", {"path": "/data.txt"})
+        g.deny(approval["id"])
+        assert not g.is_approval_valid(approval["id"], "file_read", {"path": "/data.txt"})
+    
+    def test_require_approval_not_auto_authorizing(self):
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("""rules:
+  - name: require_approval
+    action: require_approval
+    condition:
+      tool_name: file_delete
+""")
+            p = f.name
+        g2 = Guard(policies=[p], approval_mechanism=self.dummy_approval_mechanism)
+        try:
+            g2.enforce("file_delete", {})
+            assert False, "Should have raised ApprovalUnavailableError"
+        except Exception as e:
+            assert type(e).__name__ == "ApprovalUnavailableError"
+        os.unlink(p)
