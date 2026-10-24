@@ -984,3 +984,25 @@ class TestStage3ApprovalLifecycle:
         except Exception as e:
             assert type(e).__name__ == "ApprovalUnavailableError"
         os.unlink(p)
+
+
+
+
+    def test_approval_timeout_expires_deny(self):
+        """AC-023: Expired approval → DENY; protected execution blocked."""
+        import time
+        g = Guard(approval_mechanism=self.dummy_approval_mechanism, approval_timeout_ms=1)
+        a = g.request_approval("file_read", {"path": "/data.txt"}, {"created_at": time.time()})
+        # Should be valid immediately
+        assert g.is_approval_valid(a["id"], "file_read", {"path": "/data.txt"})
+        # Set created_at to past the timeout
+        a_copy = g._approvals[a["id"]]
+        a_copy["created_at"] = time.time() - 0.01  # 10ms ago
+        # Should now be invalid
+        assert not g.is_approval_valid(a["id"], "file_read", {"path": "/data.txt"})
+        # Enforce should block
+        try:
+            g.enforce("file_read", {"path": "/data.txt"})
+            assert False, "Should have raised PermissionError"
+        except PermissionError:
+            pass  # Expected - enforce blocks on expired approval

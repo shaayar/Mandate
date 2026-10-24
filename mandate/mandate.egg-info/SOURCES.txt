@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+mandate/mandate.egg-info/PKG-INFO
+mandate/mandate.egg-info/SOURCES.txt
+mandate/mandate.egg-info/dependency_links.txt
+mandate/mandate.egg-info/requires.txt
+mandate/mandate.egg-info/top_level.txt
+tests/test_integration_adapter.py
+tests/test_stage1.py

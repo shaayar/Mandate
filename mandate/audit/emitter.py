@@ -2,7 +2,9 @@ import json
 import re
 import hashlib
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from mandate.core.types import Decision
 
 
 def _redact_secrets(value: Any) -> Any:
