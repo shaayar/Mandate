@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import secrets
+import threading
 import time
 
 from mandate.core.evaluator import _condition_matches
@@ -102,6 +104,9 @@ class Guard:
         self.approval_timeout_ms = approval_timeout_ms
         self.last_audit_event: Any = None
         self._approvals: Dict[str, Dict[str, Any]] = {}
+        self._consumed_approvals: set = set()
+        # Guards check-and-consume so concurrent consumers cannot both succeed.
+        self._approval_lock = threading.Lock()
 
         # Load policies if provided
         if policies:
@@ -134,6 +139,7 @@ class Guard:
         Returns a result dict with decision, reason, policy_ids, etc.
         """
         context = context or {}
+        started = time.perf_counter()
         try:
             decision = self.policy_set.evaluate(tool_name, parameters)
         except Exception as e:
@@ -153,7 +159,7 @@ class Guard:
             "reason": reason,
             "policy_ids": policy_ids,
             "approval_id": None,
-            "evaluation_time_ms": self.evaluation_timeout_ms,
+            "evaluation_time_ms": int((time.perf_counter() - started) * 1000),
             "tool_name": tool_name,
             "parameters": parameters,
             "context": context,
@@ -200,7 +206,12 @@ class Guard:
             )
 
         context = context or {}
-        approval_id = f"req_{hash((tool_name, frozenset(parameters.items()), frozenset(context.items())))}"
+        # Random, so identical requests get separate approvals and any
+        # parameter shape (nested dicts, lists) is accepted.
+        approval_id = f"req_{secrets.token_hex(16)}"
+        # Without a caller-supplied timestamp the approval window starts now,
+        # so approval_timeout_ms always applies.
+        created_at = context.get("timestamp", time.time())
 
         approval_request = {
             "id": approval_id,
@@ -208,7 +219,7 @@ class Guard:
             "parameters": parameters,
             "context": context,
             "state": "pending",
-            "created_at": context.get("timestamp"),
+            "created_at": created_at,
         }
 
         # Call the approval mechanism
@@ -229,7 +240,7 @@ class Guard:
             "tool_name": tool_name,
             "parameters": parameters,
             "context": context,
-            "created_at": context.get("timestamp"),
+            "created_at": created_at,
             "approved": approval_request.get("approved", False),
         }
 
@@ -259,6 +270,8 @@ class Guard:
         """Check if an approval is still valid for the given action."""
         if approval_id not in self._approvals:
             return False
+        if approval_id in self._consumed_approvals:
+            return False
         approval = self._approvals[approval_id]
         # Check tool_name matches
         if approval["tool_name"] != tool_name:
@@ -269,7 +282,12 @@ class Guard:
         # Check state is approved (not denied, consumed, expired)
         if approval["state"] != "approved":
             return False
-        # Check expiry
+        if self._is_expired(approval):
+            return False
+        return True
+
+    def _is_expired(self, approval: Dict[str, Any]) -> bool:
+        """Whether an approval is older than approval_timeout_ms."""
         timeout_ms = self.approval_timeout_ms
         if timeout_ms is not None and timeout_ms > 0:
             created = approval.get("created_at", 0)
@@ -277,38 +295,38 @@ class Guard:
                 # created_at is expected as seconds since epoch; convert to ms
                 elapsed_ms = (time.time() - created) * 1000
                 if elapsed_ms > timeout_ms:
-                    return False
-        return True
+                    return True
+        return False
 
     def consume_approval(self, approval_id: str) -> bool:
         """Atomically consume an approval.
 
         Returns True if the approval was consumed successfully.
-        Returns False if the approval is in an unusable state.
-        Raises ApprovalAlreadyConsumedError if the approval ID has already been consumed.
+        Returns False if the approval is in an unusable state: pending, denied,
+        expired or already consumed.
+        Raises ApprovalAlreadyConsumedError if the approval ID is unknown.
         """
-        # Check if approval ID is known
-        if approval_id not in self._approvals:
-            raise ApprovalAlreadyConsumedError(
-                f"Approval ID '{approval_id}' is unknown"
-            )
+        with self._approval_lock:
+            # Check if approval ID is known
+            if approval_id not in self._approvals:
+                raise ApprovalAlreadyConsumedError(
+                    f"Approval ID '{approval_id}' is unknown"
+                )
 
-        # Check if already consumed
-        if hasattr(self, "_consumed_approvals") and approval_id in self._consumed_approvals:
             # Already consumed - return False, no exception for already-consumed
-            # But per AC-049, unknown IDs raise ApprovalAlreadyConsumedError
-            # and re-consuming returns False
-            return False
+            # (per AC-049, only unknown IDs raise ApprovalAlreadyConsumedError)
+            if approval_id in self._consumed_approvals:
+                return False
 
-        # Mark as consumed
-        if not hasattr(self, "_consumed_approvals"):
-            self._consumed_approvals = set()
-        self._consumed_approvals.add(approval_id)
+            # Only an approved, unexpired approval can be consumed
+            approval = self._approvals[approval_id]
+            if approval["state"] != "approved" or self._is_expired(approval):
+                return False
 
-        # Mark the approval state as consumed
-        self._approvals[approval_id]["state"] = "consumed"
+            self._consumed_approvals.add(approval_id)
+            approval["state"] = "consumed"
 
-        return True
+            return True
 
     def reload_policies(self, policy_paths: Optional[List[Union[str, Path]]] = None):
         """Atomically replace the active policy set with a validated replacement set.
