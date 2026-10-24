@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 100 100"
+   version="1.1"
+   id="svg3"
+   sodipodi:docname="mandate-authority-gate.svg"
+   inkscape:version="1.4.4 (1:1.4.4+202605061435+dcaf3e7d9e)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3" />
+  <sodipodi:namedview
+     id="namedview3"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="5.89"
+     inkscape:cx="49.91511"
+     inkscape:cy="50"
+     inkscape:window-width="1536"
+     inkscape:window-height="786"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3" />
+  <polygon
+     points="15,24 43,9 43,25 30,33 30,77 15,86"
+     fill="#0E8F80"
+     id="polygon1" />
+  <polygon
+     points="57,9 85,24 85,86 70,77 70,33 57,25"
+     fill="#14DBA6"
+     id="polygon2" />
+  <polygon
+     points="43,9 57,9 57,25 50,21 43,25"
+     fill="#F8FAFC"
+     id="polygon3"
+     style="fill:none" />
+</svg>
