@@ -1,6 +1,6 @@
 # Mandate
 
-[[!tag security python library authorization ai-agent]]
+<!-- [[!tag security python library authorization ai-agent]] -->
 
 ![Mandate Banner](assets/banners/mandate-github-social-preview.png)
 
@@ -19,27 +19,28 @@ Not familiar with authorization systems? Get started with Mandate in three steps
 
 Core idea: give AI agents the authority they need, not unrestricted power. Mandate evaluates whether an action should proceed before the protected tool executes.
 
-<div style="text-align: center; margin: 2em 0;">
 ```mermaid
+
 flowchart TD
     %% Minimalist styling for readability
     classDef mandatesystem fill:#0B1F26,color:#14DBA6,stroke:#0E8F80,stroke-width:2px
     classDef component fill:#1E293B,color:#FFFFFF,stroke:#F59E0B,stroke-width:1px
     classDef decision fill:#FFFFFF,color:#0B1F26,stroke:#14DBA6,stroke-width:1px
 
-    A[Application] -->|proposes tool action| B[Mandate Guard]
-    B -->|evaluate(tool_name, parameters, context)| C[Policy Evaluation]
-    C -->|Decision: ALLOW| D[Proceed with execution]
-    C -->|Decision: DENY| E[PermissionError: Denied]
-    C -->|Decision: REQUIRE_APPROVAL| F[Request human approval]
-    F -->|human approves| G[Re-evaluate]
-    G -->|ALLOW| D
-    G -->|DENY or expired| E
+    A["Application"] -->|"proposes tool action"| B["Mandate Guard"]
+    B -->|"evaluate(tool_name, parameters, context)"| C["Policy Evaluation"]
+    C -->|"Decision: ALLOW"| D["Proceed with execution"]
+    C -->|"Decision: DENY"| E["PermissionError: Denied"]
+    C -->|"Decision: REQUIRE_APPROVAL"| F["Request human approval"]
+    F -->|"human approves"| G["Re-evaluate"]
+    G -->|"ALLOW"| D
+    G -->|"DENY or expired"| E
 
     class B mandatesystem
     class C,D,E,G decision
+    class A,F component
+
 ```
-</div>
 
 ## How it works
 
@@ -54,12 +55,12 @@ An application proposes a tool action. Mandate evaluates the action against conf
 - **Enforcement Boundary**: `enforce()` raises `PermissionError` on DENY / `ApprovalUnavailableError` on REQUIRE_APPROVAL
 
 <div style="margin: 2em 0; padding: 1em; background:#0B1F26; border-left: 4px solid #14DBA6;">
-<p><strong>Diagrams:</strong></p>
-<ul>
-  <li><a href="docs/diagrams/architecture.md">Architecture Diagram</a> — FRIDAY integration, Guard, policy evaluation, approval flow, audit emission, enforcement outcome</li>
-  <li><a href="docs/diagrams/authorization-flow.md">Authorization Flow Diagram</a> — matching rules, decision precedence, default-deny behavior</li>
-  <li><a href="docs/diagrams/approval-lifecycle.md">Approval Lifecycle Diagram</a> — approval request, human decision, exact-action binding, expiry, single-use consumption, audit failure, blocking behavior</li>
-</ul>
+    <p><strong>Diagrams:</strong></p>
+    <ul>
+      <li> <a href="docs/diagrams/architecture.md">Architecture Diagram</a> — FRIDAY integration, Guard, policy evaluation, approval flow, audit emission, enforcement outcome</li>
+      <li> <a href="docs/diagrams/authorization-flow.md">Authorization Flow Diagram</a> — matching rules, decision precedence, default-deny behavior</li>
+      <li> <a href="docs/diagrams/approval-lifecycle.md">Approval Lifecycle Diagram</a> — approval request, human decision, exact-action binding, expiry, single-use consumption, audit failure, blocking behavior</li>
+    </ul>
 </div>
 
 ## The problem
@@ -85,16 +86,27 @@ Mandate provides the authorization boundary that agent frameworks need but canno
 
 Mandate is an open-source project. It is intended to be usable by other developers without adopting FRIDAY or a particular agent framework.
 
-## How it works
+## How it operates
 
 ```mermaid
+
 flowchart TD
-    A[Application proposes tool action] --> B[Mandate evaluates action]
-    B -->|ALLOW| C[Proceed with execution]
-    B -->|DENY| C[Block execution]
-    B -->|REQUIRE_APPROVAL| D[Request human approval]
-    D -->|Approved| C[Proceed with execution]
-    D -->|Denied| C[Block execution]
+    A["Application proposes tool action"] --> B["Mandate evaluates action"]
+
+    B -->|ALLOW| E["Enforce audit requirements"]
+    B -->|DENY| X["Block execution"]
+    B -->|REQUIRE_APPROVAL| D["Request human approval"]
+
+    D -->|Denied| X
+    D -->|Approved| F["Validate approval binding and expiry"]
+    F -->|Invalid or expired| X
+    F -->|Valid| G["Consume approval once"]
+    G -->|Already consumed or error| X
+    G -->|Consumed successfully| E
+
+    E -->|Audit succeeds| H["Permit action execution"]
+    E -->|Required audit fails| X
+
 ```
 
 **Mandate cannot protect calls that bypass the authorization boundary.** Any tool called without going through Mandate's enforcement path is unprotected.
